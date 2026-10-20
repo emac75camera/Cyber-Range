@@ -1,39 +1,48 @@
-# Cyber-Range
+# MazeMind 🧠
 
-A browser-based, fictional cyber range for learning network defense through safe, self-contained simulations.
+**An interactive reinforcement-learning lab that teaches a neural network to navigate a maze.**
 
-## Current prototype
+MazeMind is a self-contained browser simulation. The agent starts without a route, explores the maze, collects rewards and penalties, and updates a Deep Q-Network (DQN) as it goes. Watch its movement, learning curve, action values, and neural activations live.
 
-The initial lab is a single-page application in `index.html`. It uses plain HTML, CSS, and JavaScript, with no build step or third-party dependencies.
+## Try it
 
-### Features
-- Interactive network topology with selectable fictional hosts
-- Scenario runner for baseline traffic, suspicious discovery, repeated login failures, and unusual outbound transfers
-- In-memory simulated packet log and security-event log
-- Defensive toggles for gateway firewall, intrusion detection, and login rate limiting
-- Host inspection and a simulated hardening action
-- Small training console with safe lab commands (`help`, `hosts`, `status`, `ping`, `inspect`, `scan`, and control toggles)
-- Responsive layout for desktop and mobile
-- Reset button to clear the current in-memory lab state
+Once GitHub Pages is enabled for this repository, open the published site. You can also run it locally by opening `index.html` in a modern browser. No build step, packages, server, or API keys are needed.
 
-## Run locally
+## Features
 
-Open `index.html` in a modern browser. No server or package installation is required.
+- **Actual DQN training:** an 8-feature state, two 16-neuron ReLU hidden layers, and four Q-value outputs.
+- **Experience replay:** learns from randomly sampled transitions instead of only the latest move.
+- **Target network:** a periodically refreshed network stabilizes temporal-difference targets.
+- **Reward shaping:** goal reward, step and wall penalties, plus a small signal for progress toward the goal.
+- **Live maze simulation:** watch the agent explore, revisit cells, hit dead ends, and find the goal.
+- **Learning visualizations:** rolling success rate, episode reward, visited-cell heatmap, recent trail, network activations, and current action values.
+- **Experiment controls:** training speed, maze size, exploration strategy, learning rate, discount factor, batch size, and random seed.
+- **Portable experiments:** export and import the model weights, target network, replay buffer, and training history as JSON.
+- **Responsive interface:** designed to work on desktop and mobile browsers.
 
-## Publish with GitHub Pages
+## How it works
 
-If you want a public web demo, open the repository's **Settings → Pages** and choose **Deploy from a branch**, branch `main`, folder `/(root)`, then save. GitHub documents this process here: https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site
+1. The agent observes its normalized position, relative goal direction, and whether each neighboring cell is blocked.
+2. An epsilon-greedy policy sometimes chooses a random action to explore and otherwise selects the action with the highest predicted Q-value.
+3. Each move produces a reward and a transition that is stored in replay memory.
+4. Mini-batches train the neural network toward the Bellman target: immediate reward plus the discounted best future Q-value.
+5. A separate target network is periodically synchronized with the learning network.
 
-**Visibility warning:** a published GitHub Pages site is available on the internet, even when the source repository is private on plans that allow Pages for private repositories. Review repository contents and your plan's visibility options before enabling publishing.
+Training is stochastic and not guaranteed to improve monotonically. Try different seeds and settings to compare outcomes. This is an educational implementation, not a claim that a particular model has converged or will solve every maze.
 
-## Safety boundary
+## Technology and privacy
 
-This is a teaching prototype, not a real network scanner, terminal, firewall, or intrusion detection system. All hosts, addresses, traffic, and events are fictional and handled in the browser. Commands do not invoke operating-system processes, send packets, contact target hosts, or test real systems.
+- Vanilla HTML, CSS, and JavaScript.
+- Canvas and SVG visualizations.
+- No external libraries, network calls, analytics, or uploaded training data.
+- All training runs locally in the browser.
 
-## Roadmap ideas
+## GitHub Pages
 
-- Structured scenario objectives and scoring
-- Guided lessons and hints
-- Repeatable scenario tests and accessible event filtering
-- Exportable lab reports
-- More explicit defensive investigation workflows
+The repository includes a GitHub Actions workflow at `.github/workflows/pages.yml`. In **Settings → Pages**, choose **GitHub Actions** as the build and deployment source. Then check the **Actions** tab for the deployment result.
+
+Because this repository is private, whether Pages can be enabled depends on the repository owner's GitHub plan and settings. If Pages is unavailable, opening `index.html` locally still runs the project.
+
+## Safety
+
+MazeMind is a self-contained educational simulation. It does not interact with external systems or execute downloaded model files as code.
