@@ -36,6 +36,9 @@
     <div class="legend"><span><i class="swatch" style="background:#64e5d2"></i>Agent</span><span><i class="swatch" style="background:#8fe3a3"></i>Goal</span><span><i class="swatch" style="background:#82a9ff"></i>Visited cell</span><span><i class="swatch" style="background:#263650"></i>Wall</span><span><i class="swatch" style="background:#ffc875"></i>Recent trail</span></div>
     <div class="controls"><button id="trainBtn" class="primary">▶ Start training</button><button id="stepBtn">Step once</button><button id="resetBtn" class="quiet">↻ Reset</button></div>
     <div class="progress"><div id="episodeProgress"></div></div>
+    <div class="section-label">Greedy evaluation · no learning or exploration</div>
+    <div class="control-row"><div><label class="control-label" for="testEpisodes">Test episodes</label><div class="control-hint">New mazes at the current size; pauses training</div></div><input id="testEpisodes" type="number" min="1" max="100" value="20" style="width:65px"><button id="testBtn">Run test</button></div>
+    <p id="testResult" class="explain" role="status">No evaluation run yet.</p>
     <div class="section-label">Environment settings</div>
     <div class="control-row"><div><div class="control-label">Training speed</div><div class="control-hint">How many decisions run each frame</div></div><input id="speed" type="range" min="1" max="30" value="6"><span id="speedText" class="pill">6×</span></div>
     <div class="control-row"><div><div class="control-label">Maze complexity</div><div class="control-hint">New maze starts a fresh experiment</div></div><select id="mazeSize"><option value="9">Small · 9 × 9</option><option value="13" selected>Medium · 13 × 13</option><option value="17">Large · 17 × 17</option></select></div>
@@ -103,6 +106,31 @@ function chooseAction(q){if(rand()<epsilon){wasExplore=true;return Math.floor(ra
 function stepAgent(){if(episodeDone)return;const s=state(),f=forward(net,s);hidden1=f.a1;hidden2=f.a2;qValues=f.out;const action=chooseAction(qValues),oldDist=Math.abs(goal.x-agent.x)+Math.abs(goal.y-agent.y),a=ACTIONS[action],nx=agent.x+a.x,ny=agent.y+a.y;let reward=-.018,done=false,hit=false;if(wallAt(nx,ny)){reward=-.16;hit=true}else{agent={x:nx,y:ny};const newDist=Math.abs(goal.x-agent.x)+Math.abs(goal.y-agent.y);reward+=clamp((oldDist-newDist)*.018,-.018,.018);if(!visited.has(key(agent.x,agent.y)))reward+=.002}steps++;totalSteps++;if(agent.x===goal.x&&agent.y===goal.y){reward=1;done=true;episodeWins++;bestPath=bestPath===null?steps:Math.min(bestPath,steps);log("GOAL reached in "+steps+" steps. Reward +1.000.","good")}if(steps>=size*size*2&&!done){done=true;log("Episode timed out after "+steps+" steps.","warn")}episodeReward+=reward;visited.add(key(agent.x,agent.y));const k=key(agent.x,agent.y);visits[k]=(visits[k]||0)+1;trail.push({...agent});if(trail.length>220)trail.shift();const ns=state();replay.push({s,a:action,r:reward,ns,done});if(replay.length>replayMax)replay.shift();if(replay.length>=32)learn();learnStep++;if(learnStep%120===0)targetNet=copyNet(net);if(done){episodeDone=true;episode++;episodeResults.push(done&&agent.x===goal.x&&agent.y===goal.y?1:0);if(episodeResults.length>200)episodeResults.shift();rewardHistory.push(episodeReward);if(rewardHistory.length>180)rewardHistory.shift();if(episode%10===0)log("Episode "+episode+" · recent success "+Math.round(mean(episodeResults.slice(-50))*100)+"% · replay "+replay.length,"info");setTimeout(()=>{if(episodeDone){nextEpisode();drawAll()}},running?60:0)}epsilon=epsilonNow();updateQ();if(hit&&steps%12===0)log("Wall collision. Penalty −0.16; agent adjusts.","warn");if(!wasExplore&&steps%17===0)log("Greedy choice: "+ACTIONS[action].name+" (highest estimated Q-value).","info");renderMetrics();if(frameCounter%2===0)drawAll();frameCounter++}
 function learn(){const batchSize=Number($("batch").value);for(let b=0;b<batchSize;b++){const exp=replay[Math.floor(rand()*replay.length)];const f=forward(net,exp.s);const target=forward(targetNet,exp.ns).out;const targetVal=exp.r+(exp.done?0:Number($("gamma").value)/100*Math.max(...target));const err=f.out[exp.a]-targetVal;const lr=Number($("lr").value)/1000;const g3=Array(OUT).fill(0);g3[exp.a]=clamp(err,-1,1);const oldW3=net.w3.map(row=>row.slice());for(let i=0;i<OUT;i++){for(let j=0;j<H2;j++)net.w3[i][j]-=lr*g3[i]*f.a2[j];net.b3[i]-=lr*g3[i]}const g2=Array(H2).fill(0);for(let j=0;j<H2;j++){let v=0;for(let i=0;i<OUT;i++)v+=oldW3[i][j]*g3[i];g2[j]=f.a2[j]>0?v:0}const oldW2=net.w2.map(row=>row.slice());for(let i=0;i<H2;i++){for(let j=0;j<H1;j++)net.w2[i][j]-=lr*g2[i]*f.a1[j];net.b2[i]-=lr*g2[i]}const g1=Array(H1).fill(0);for(let j=0;j<H1;j++){let v=0;for(let i=0;i<H2;i++)v+=oldW2[i][j]*g2[i];g1[j]=f.a1[j]>0?v:0}for(let i=0;i<H1;i++){for(let j=0;j<IN;j++)net.w1[i][j]-=lr*g1[i]*f.x[j];net.b1[i]-=lr*g1[i]}}}
 function updateQ(){if(!net)return;const f=forward(net,state());hidden1=f.a1;hidden2=f.a2;qValues=f.out}
+function runGreedyTest(){
+  const count=Number($("testEpisodes").value);
+  if(!Number.isInteger(count)||count<1||count>100){$("testResult").textContent="Enter a whole number from 1 to 100.";return}
+  if(running)toggleTraining();
+  const saved={maze,start,goal,agent,rngState};let wins=0,total=0,completed=0;const testMazes=new Set();
+  try{
+    // Separate, reproducible random stream; test never changes the training RNG.
+    seeded(((Number($("seed").value)>>>0)^0x9e3779b9)>>>0);
+    for(let i=0;i<count;i++){
+      let signature,tries=0;
+      do{makeMaze(false);signature=JSON.stringify(maze);tries++}while((seenMazes.has(signature)||testMazes.has(signature))&&tries<100);
+      if(seenMazes.has(signature)||testMazes.has(signature))break;
+      testMazes.add(signature);agent={...start};let n=0;
+      while(n<size*size*2&&!(agent.x===goal.x&&agent.y===goal.y)){
+        const q=forward(net,state()).out;let best=0;for(let j=1;j<q.length;j++)if(q[j]>q[best])best=j;
+        const a=ACTIONS[best],x=agent.x+a.x,y=agent.y+a.y;if(!wallAt(x,y))agent={x,y};n++;
+      }
+      total+=n;completed++;if(agent.x===goal.x&&agent.y===goal.y)wins++;
+    }
+  }finally{maze=saved.maze;start=saved.start;goal=saved.goal;agent=saved.agent;rngState=saved.rngState}
+  const result=completed?`${wins}/${completed} successes (${(100*wins/completed).toFixed(1)}%); average steps ${ (total/completed).toFixed(1) } (all attempts, including timeouts).`:'No new maze could be generated.';
+  $("testResult").textContent=result+` ${completed} independently generated maze(s), distinct from recorded training and test layouts.`+(completed<count?' Stopped early: could not find more distinct layouts.':'');
+  log("Greedy test: "+result,"info");
+}
+$("testBtn").addEventListener("click",runGreedyTest);
 function log(msg,type){const t=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});logLines.push({t,msg,type:type||""});if(logLines.length>60)logLines.shift();const el=$("log");el.innerHTML=logLines.slice(-24).map(x=>'<div class="'+x.type+'">['+x.t+'] '+escapeHtml(x.msg)+'</div>').join("");el.scrollTop=el.scrollHeight}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function renderMetrics(){$("episodes").textContent=episode.toLocaleString();$("successRate").textContent=Math.round(mean(episodeResults.slice(-50))*100)+"%";$("bestPath").textContent=bestPath===null?"—":bestPath;$("epsilonValue").textContent=Math.round(epsilon*100)+"%";$("episodeChip").textContent="EPISODE "+episode;$("episodeProgress").style.width=clamp(steps/(size*size*2)*100,0,100)+"%";$("runStatus").textContent=running?"Training in progress":episode?"Paused · ready to continue":"Ready to train";$("statusDot").classList.toggle("live",running)}
